@@ -1,0 +1,94 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow import keras
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+#import dataset
+testing_data = pd.read_csv('emnist-balanced-test.csv',header=None)
+training_data = pd.read_csv('emnist-balanced-train.csv',header=None)
+
+
+#training_data
+y_train = np.array(training_data.iloc[:, 0].values)
+x_train = np.array(training_data.iloc[:, 1:].values)
+
+#val data
+x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size= 0.20)
+
+#testing_data
+y_test = np.array(testing_data.iloc[:, 0].values)
+x_test = np.array(testing_data.iloc[:, 1:].values)
+
+#Normalization
+x_train = x_train/255.0
+x_test = x_test/255.0
+x_val = x_val/255.0
+
+#Map Labels
+map = pd.read_csv("emnist-balanced-mapping.txt", delimiter = ' ', \
+                   index_col=0, header=None).squeeze("columns")
+
+#function to flip images and rotate them (data preprocessing)
+def flip_and_rotate(image):
+  W = 28
+  H = 28
+  image = image.reshape(W, H)
+  image = np.fliplr(image)
+  image = np.rot90(image)
+  return image
+x_train = np.apply_along_axis(flip_and_rotate, 1, x_train)
+x_test = np.apply_along_axis(flip_and_rotate, 1, x_test)
+x_val = np.apply_along_axis(flip_and_rotate,1,x_val)
+
+print(x_train.shape," ",y_train.shape)
+print(x_test.shape," ",y_test.shape)
+print(x_val.shape, " " ,y_val.shape)
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Conv2D(filters=128,kernel_size=5,input_shape=(28,28,1),activation='relu'),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(64,3,input_shape=(28,28,1),activation='relu'),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(512,activation='relu'),
+    tf.keras.layers.Dense(128,activation='relu'),
+    tf.keras.layers.Dense(47,activation='softmax')
+])
+
+model.compile(optimizer="adam",loss="sparse_categorical_crossentropy",metrics=["accuracy"])
+MCP = keras.callbacks.ModelCheckpoint('B.h5',verbose=1,save_best_only=True,monitor='val_accuracy',mode='max')
+
+history = model.fit(x_train,y_train,epochs=5,batch_size=128,validation_data=(x_val,y_val),callbacks=[MCP])
+model.save("model.h5")
+model.summary()
+
+result = model.evaluate(x_test,y_test)
+print(result)
+
+# Plot training vs validation accruacy
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('CNN Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Number of Epochs')
+plt.legend(['training', 'validation'], loc='lower right')
+plt.show()
+
+# Plot training vs validation losses
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('CNN Model Loss')
+plt.ylabel('Loss')
+plt.xlabel('Number of Epochs')
+plt.legend(['training', 'validation'], loc='upper right')
+plt.show()
+
+prediction = model.predict(x_test)
+
+for i in range(len(testing_data.index)):
+      plt.imshow(x_test[i].reshape([28,28]), cmap = plt.cm.binary)
+      plt.xlabel("Actual: " + chr(map[y_test[i]]))
+      plt.title("Prediction " + chr(map[np.argmax(prediction[i])]))
+      plt.show()
